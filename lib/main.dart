@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
@@ -5,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 
-void main() => runApp(const MaterialApp(home: MyHome()));
+void main() => runApp(const MaterialApp(home: MyHome(),debugShowCheckedModeBanner: false,));
 
 class MyHome extends StatelessWidget {
   const MyHome({Key? key}) : super(key: key);
@@ -13,15 +14,17 @@ class MyHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Flutter Demo Home Page')),
+      appBar: AppBar(title: const Text('Scan QR and claim you gift!')),
+      extendBodyBehindAppBar: true,
       body: Center(
-        child: ElevatedButton(
+        child: ElevatedButton.icon(
           onPressed: () {
             Navigator.of(context).push(MaterialPageRoute(
               builder: (context) => const QRViewExample(),
             ));
           },
-          child: const Text('qrView'),
+          label: const Text('Scan QR Code'),
+          icon: Icon(Icons.qr_code_scanner),
         ),
       ),
     );
@@ -40,8 +43,6 @@ class _QRViewExampleState extends State<QRViewExample> {
   QRViewController? controller;
   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
 
-  // In order to get hot reload to work we need to pause the camera if the platform
-  // is android, or resume the camera if the platform is iOS.
   @override
   void reassemble() {
     super.reassemble();
@@ -57,100 +58,39 @@ class _QRViewExampleState extends State<QRViewExample> {
       body: Column(
         children: <Widget>[
           Expanded(flex: 4, child: _buildQrView(context)),
-          Expanded(
-            flex: 1,
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: <Widget>[
-                  if (result != null)
-                    Text(
-                        'Barcode Type: ${describeEnum(result!.format)}   Data: ${result!.code}')
-                  else
-                    const Text('Scan a code'),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        child: ElevatedButton(
-                            onPressed: () async {
-                              await controller?.toggleFlash();
-                              setState(() {});
-                            },
-                            child: FutureBuilder(
-                              future: controller?.getFlashStatus(),
-                              builder: (context, snapshot) {
-                                return Text('Flash: ${snapshot.data}');
-                              },
-                            )),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        child: ElevatedButton(
-                            onPressed: () async {
-                              await controller?.flipCamera();
-                              setState(() {});
-                            },
-                            child: FutureBuilder(
-                              future: controller?.getCameraInfo(),
-                              builder: (context, snapshot) {
-                                if (snapshot.data != null) {
-                                  return Text(
-                                      'Camera facing ${describeEnum(snapshot.data!)}');
-                                } else {
-                                  return const Text('loading');
-                                }
-                              },
-                            )),
-                      )
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            await controller?.pauseCamera();
-                          },
-                          child: const Text('pause',
-                              style: TextStyle(fontSize: 20)),
-                        ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            await controller?.resumeCamera();
-                          },
-                          child: const Text('resume',
-                              style: TextStyle(fontSize: 20)),
-                        ),
-                      )
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          )
+          // Expanded(
+          //   flex: 1,
+          //   child: FittedBox(
+          //     fit: BoxFit.fill,
+          //     child: Column(
+          //       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          //       children: <Widget>[
+          //         if (result != null)
+          //           Text(
+          //             'Barcode Type: ${describeEnum(result!.format)}   Data: ${result!.code}',
+          //           )
+          //         // else
+          //         //   IconButton(
+          //         //     onPressed: () {
+          //         //       // Navigate back
+          //         //       Navigator.pop(context);
+          //         //     },
+          //         //     icon: Icon(Icons.arrow_back),
+          //         //   )
+          //       ],
+          //     ),
+          //   ),
+          // )
         ],
       ),
     );
   }
 
   Widget _buildQrView(BuildContext context) {
-    // For this example we check how width or tall the device is and change the scanArea and overlay accordingly.
     var scanArea = (MediaQuery.of(context).size.width < 400 ||
             MediaQuery.of(context).size.height < 400)
-        ? 150.0
+        ? 300.0
         : 300.0;
-    // To ensure the Scanner view is properly sizes after rotation
-    // we need to listen for Flutter SizeChanged notification and update controller
     return QRView(
       key: qrKey,
       onQRViewCreated: _onQRViewCreated,
@@ -172,11 +112,24 @@ class _QRViewExampleState extends State<QRViewExample> {
       setState(() {
         result = scanData;
       });
+      controller.stopCamera(); // Stop the camera after scanning
+      // Navigate to another screen with the scanned data
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ScannedDataScreen(data: result!.code.toString()),
+        ),
+      ).then((_) {
+        // When returning back from the other screen, reset the state and resume the camera
+        setState(() {
+          result = null;
+        });
+        controller.resumeCamera();
+      });
     });
   }
 
   void _onPermissionSet(BuildContext context, QRViewController ctrl, bool p) {
-    log('${DateTime.now().toIso8601String()}_onPermissionSet $p');
     if (!p) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('no Permission')),
@@ -191,84 +144,27 @@ class _QRViewExampleState extends State<QRViewExample> {
   }
 }
 
-// class QRViewExample extends StatefulWidget {
-//   @override
-//   _QRViewExampleState createState() => _QRViewExampleState();
-// }
+class ScannedDataScreen extends StatelessWidget {
+  final String data;
 
-// class _QRViewExampleState extends State<QRViewExample> {
-//   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-//   Barcode? result;
-//   QRViewController? controller;
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: Text('QR Code Scanner')),
-//       body: Column(
-//         children: <Widget>[
-//           Expanded(
-//             flex: 5,
-//             child: QRView(
-//               key: qrKey,
-//               onQRViewCreated: _onQRViewCreated,
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-
-//   void _onQRViewCreated(QRViewController controller) {
-//     this.controller = controller;
-//     controller.scannedDataStream.listen((scanData) async {
-//       setState(() {
-//         result = scanData;
-//       });
-//      print('.....................................................');
-//       print(scanData);
-
-//       // Extracting uniqueKey and cardType from QR code
-//       var data = jsonDecode(result!.code!);
-//       String uniqueKey = data['uniqueKey'];
-//       String cardType = data['cardType'];
-
-//       // Performing POST request
-//       try {
-//         var response = await http.post(
-//           Uri.parse('http://localhost:3000/api/add-reward'),
-//           headers: <String, String>{
-//             'Content-Type': 'application/json; charset=UTF-8',
-//           },
-//           body: jsonEncode(<String, String>{
-//             'uniqueKey': uniqueKey,
-//             'cardType': cardType,
-//           }),
-//         );
-
-//         if (response.statusCode == 200) {
-//           // Successful POST request
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             SnackBar(content: Text('Success: ${response.body}')),
-//           );
-//         } else {
-//           // Failed POST request
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             SnackBar(content: Text('Error: ${response.body}')),
-//           );
-//         }
-//       } catch (e) {
-//         // Error handling
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(content: Text('Error: $e')),
-//         );
-//       }
-//     });
-//   }
-
-//   @override
-//   void dispose() {
-//     controller?.dispose();
-//     super.dispose();
-//   }
-// }
+  const ScannedDataScreen({Key? key, required this.data}) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+                      onPressed: () {
+                        // Navigate back
+                        Navigator.pop(context);
+                      },
+                      icon: Icon(Icons.arrow_back),
+                    ),
+        title: Text('Scanned Data'),
+      ),
+      body: Center(
+        child: Text(data),
+      ),
+    );
+  }
+}
